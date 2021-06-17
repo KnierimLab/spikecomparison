@@ -24,11 +24,9 @@ from spikeextractors.extraction_tools import read_python
 
 from spikesorters.sorterlist import sorter_dict
 
-# TODO change this when sorters will be remove from toolkit
 from spikesorters import run_sorters, iter_output_folders, iter_sorting_output
 from .comparisontools import _perf_keys
 from .groundtruthcomparison import compare_sorter_to_ground_truth
-
 
 
 def setup_comparison_study(study_folder, gt_dict):
@@ -46,13 +44,13 @@ def setup_comparison_study(study_folder, gt_dict):
     """
 
     study_folder = Path(study_folder)
-    assert not os.path.exists(study_folder), 'study_folder already exists'
+    assert not study_folder.is_dir(), "'study_folder' already exists. Please remove it"
 
-    os.makedirs(str(study_folder))
-    os.makedirs(str(study_folder / 'raw_files'))
-    os.makedirs(str(study_folder / 'ground_truth'))
-    os.makedirs(str(study_folder / 'sortings'))
-    os.makedirs(str(study_folder / 'sortings/run_log'))
+    study_folder.mkdir(parents=True, exist_ok=True)
+    (study_folder / 'raw_files').mkdir(parents=True, exist_ok=True)
+    (study_folder / 'ground_truth').mkdir(parents=True, exist_ok=True)
+    (study_folder / 'sortings').mkdir(parents=True, exist_ok=True)
+    (study_folder / 'sortings' / 'run_log').mkdir(parents=True, exist_ok=True)
 
     for rec_name, (recording, sorting_gt) in gt_dict.items():
         # write recording as binary format + json + prb
@@ -123,7 +121,6 @@ def get_one_recording(study_folder, rec_name):
         info = json.load(f)
     rec = se.BinDatRecordingExtractor(raw_filename, info['sample_rate'], info['num_chan'],
                                       info['dtype'], time_axis=info['time_axis'])
-    # rec = rec.load_probe_file(prb_filename)
     load_probe_file_inplace(rec, prb_filename)
 
     return rec
@@ -250,15 +247,19 @@ def copy_sortings_to_npz(study_folder):
     sorter_folders = study_folder / 'sorter_folders'
     sorting_folders = study_folder / 'sortings'
 
-    if not os.path.exists(sorting_folders):
-        os.makedirs(str(sorting_folders))
+    sorting_folders.mkdir(parents=True, exist_ok=True)
 
     for rec_name, sorter_name, output_folder in iter_output_folders(sorter_folders):
         SorterClass = sorter_dict[sorter_name]
-        sorting = SorterClass.get_result_from_folder(output_folder)
         fname = rec_name + '[#]' + sorter_name
-        se.NpzSortingExtractor.write_sorting(sorting, sorting_folders / (fname + '.npz'))
-        if os.path.exists(output_folder / 'spikeinterface_log.json'):
+        npz_filename = sorting_folders / (fname + '.npz')
+        try:
+            sorting = SorterClass.get_result_from_folder(output_folder)
+            se.NpzSortingExtractor.write_sorting(sorting, npz_filename)
+        except:
+            if npz_filename.is_file():
+                npz_filename.unlink()
+        if (output_folder / 'spikeinterface_log.json').is_file():
             shutil.copyfile(output_folder / 'spikeinterface_log.json', sorting_folders / 'run_log' / (fname + '.json'))
 
 
@@ -293,8 +294,7 @@ def collect_run_times(study_folder):
     log_folder = sorting_folders / 'run_log'
     tables_folder = study_folder / 'tables'
 
-    if not os.path.exists(tables_folder):
-        os.makedirs(str(tables_folder))
+    tables_folder.mkdir(parents=True, exist_ok=True)
 
     run_times = []
     for filename in os.listdir(log_folder):
@@ -433,8 +433,6 @@ def aggregate_performances_table(study_folder, exhaustive_gt=False, **karg_thres
     dataframes['perf_by_spiketrain'] = perf_by_spiketrain
 
     return dataframes
-
-
 
 
 def load_probe_file_inplace(recording, probe_file):
